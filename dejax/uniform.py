@@ -3,7 +3,7 @@ import jax
 import jax.experimental.checkify as checkify
 
 import dejax.circular_buffer as circular_buffer
-from dejax.base import ReplayBuffer, Item, ItemBatch, IntScalar
+from dejax.base import ReplayBuffer, Item, ItemBatch, IntScalar, ItemUpdateFn
 
 
 @chex.dataclass(frozen=True)
@@ -34,4 +34,10 @@ def uniform_replay(max_size: int) -> ReplayBuffer:
     def sample_fn(state: UniformReplayBufferState, rng: chex.PRNGKey, batch_size: int) -> ItemBatch:
         return uniform_sample(state.storage, rng, batch_size)
 
-    return ReplayBuffer(init_fn=init_fn, size_fn=size_fn, add_fn=add_fn, sample_fn=sample_fn)
+    def update_fn(state: UniformReplayBufferState, item_update_fn: ItemUpdateFn) -> UniformReplayBufferState:
+        # TODO: there might be a faster way to make updates that does not affect all items in the buffer
+        batch_update_fn = jax.vmap(item_update_fn)
+        updated_data = batch_update_fn(state.storage.data)
+        return state.replace(storage=state.storage.replace(data=updated_data))
+
+    return ReplayBuffer(init_fn=init_fn, size_fn=size_fn, add_fn=add_fn, sample_fn=sample_fn, update_fn=update_fn)

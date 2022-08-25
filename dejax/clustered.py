@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax.experimental.checkify as checkify
 import jax.random
 
-from dejax.base import ReplayBuffer, ReplayBufferState, Item, ItemBatch, IntScalar
+from dejax.base import ReplayBuffer, ReplayBufferState, Item, ItemBatch, IntScalar, ItemUpdateFn
 import dejax.utils as utils
 
 
@@ -67,4 +67,11 @@ def clustered_replay(
 
         return jax.vmap(sample_item)(cluster_for_sample, rng_batch)
 
-    return ReplayBuffer(init_fn=init_fn, size_fn=size_fn, add_fn=add_fn, sample_fn=sample_fn)
+    def update_fn(state: ClusteredReplayBufferState, item_update_fn: ItemUpdateFn) -> ClusteredReplayBufferState:
+        def cluster_update_fn(cluster_state: ReplayBufferState) -> ReplayBufferState:
+            return state.cluster_buffer.update_fn(cluster_state, item_update_fn)
+        batch_cluster_update_fn = jax.vmap(cluster_update_fn)
+        updated_cluster_state_batch = batch_cluster_update_fn(state.cluster_state_batch)
+        return state.replace(cluster_state_batch=updated_cluster_state_batch)
+
+    return ReplayBuffer(init_fn=init_fn, size_fn=size_fn, add_fn=add_fn, sample_fn=sample_fn, update_fn=update_fn)

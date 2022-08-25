@@ -7,6 +7,7 @@ ReplayBufferState = Any
 Item = chex.ArrayTree
 ItemBatch = chex.ArrayTree
 IntScalar = chex.Array
+ItemUpdateFn = Callable[[Item], Item]
 
 
 @chex.dataclass(frozen=True)
@@ -15,3 +16,4 @@ class ReplayBuffer:
     size_fn: Callable[[ReplayBufferState], IntScalar]
     add_fn: Callable[[ReplayBufferState, Item], ReplayBufferState]
     sample_fn: Callable[[ReplayBufferState, chex.PRNGKey, int], ItemBatch]
+    update_fn: Callable[[ReplayBufferState, ItemUpdateFn], ReplayBufferState]
