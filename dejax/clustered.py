@@ -51,12 +51,14 @@ def clustered_replay(
         cluster_sizes = jax.vmap(state.cluster_buffer.size_fn)(state.cluster_state_batch)
         cluster_weights = jnp.where(
             cluster_sizes > 0, jnp.power(cluster_sizes, state.distribution_power), cluster_sizes)
+
         cluster_fractions = cluster_weights / jnp.sum(cluster_weights)
         num_samples = jnp.round(batch_size * cluster_fractions).astype(jnp.int32)
         checkify.check(jnp.sum(num_samples) == batch_size, 'Number of samples does not match batch size')
 
-        num_clusters = utils.get_pytree_axis_dim(state.cluster_state_batch, 0)
-        cluster_for_sample = jax.random.randint(rng, minval=0, maxval=num_clusters, shape=(batch_size,))
+        rng, cluster_selection_key = jax.random.split(rng)
+        cluster_for_sample = jax.random.categorical(
+            cluster_selection_key, logits=jnp.log(cluster_weights), shape=(batch_size,))
         rng_batch = jax.random.split(rng, batch_size)
 
         def sample_item(cluster_index: IntScalar, rng: chex.PRNGKey) -> Item:
