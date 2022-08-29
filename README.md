@@ -1,5 +1,5 @@
 # dejax
-An implementation of replay buffer data structure in JAX. Operations involving dejax replay buffers can be jitted and run ob both CPU and GPU.
+An implementation of replay buffer data structure in JAX. Operations involving dejax replay buffers can be jitted and run on both CPU and GPU.
 
 ## Package contents
 * `dejax.circular_buffer` — an implementation of a circular buffer data structure that can store pytrees of arbitrary structure (with the restriction that the corresponding tensor shapes in different pytrees match).
