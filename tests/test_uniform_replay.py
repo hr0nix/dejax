@@ -1,3 +1,4 @@
+import chex
 import jax.random
 import jax.numpy as jnp
 import jax.experimental.checkify as checkify
@@ -36,6 +37,19 @@ def test_uniform_replay_jit():
     err.throw()
     assert size == 3
     assert large_batch.shape == (batch_size,)
+
+
+def test_add_batch():
+    buffer = uniform_replay(max_size=4)
+
+    buffer_state_1 = buffer.init_fn(make_item(0))
+    for item in [1, 2, 3]:
+        buffer_state_1 = buffer.add_fn(buffer_state_1, make_item(item))
+
+    buffer_state_2 = buffer.init_fn(make_item(0))
+    buffer_state_2 = buffer.add_batch_fn(buffer_state_2, jnp.array([1, 2, 3]))
+
+    chex.assert_trees_all_equal(buffer_state_1, buffer_state_2)
 
 
 def test_update():

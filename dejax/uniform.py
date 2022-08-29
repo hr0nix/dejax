@@ -3,7 +3,7 @@ import jax
 import jax.experimental.checkify as checkify
 
 import dejax.circular_buffer as circular_buffer
-from dejax.base import ReplayBuffer, Item, ItemBatch, IntScalar, ItemUpdateFn
+from dejax.base import ReplayBuffer, Item, ItemBatch, IntScalar, ItemUpdateFn, make_default_add_batch_fn
 
 
 @chex.dataclass(frozen=True)
@@ -40,4 +40,12 @@ def uniform_replay(max_size: int) -> ReplayBuffer:
         updated_data = batch_update_fn(state.storage.data)
         return state.replace(storage=state.storage.replace(data=updated_data))
 
-    return ReplayBuffer(init_fn=init_fn, size_fn=size_fn, add_fn=add_fn, sample_fn=sample_fn, update_fn=update_fn)
+    return ReplayBuffer(
+        init_fn=init_fn,
+        size_fn=size_fn,
+        add_fn=add_fn,
+        # TODO: it should be possible to make an optimized version of add_batch_fn for this buffer type
+        add_batch_fn=make_default_add_batch_fn(add_fn),
+        sample_fn=sample_fn,
+        update_fn=update_fn
+    )
