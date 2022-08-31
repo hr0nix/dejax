@@ -51,6 +51,26 @@ def test_clustered_replay_jit():
     assert large_batch.shape == (batch_size,)
 
 
+def test_clustered_replay_jit_state_as_arg():
+    batch_size = 10000
+    buffer = make_buffer()
+
+    @jax.jit
+    @checkify.checkify
+    def do_something_with_buffer(buffer_state):
+        for item in [0, 1, 2]:
+            buffer_state = buffer.add_fn(buffer_state, make_item(item))
+        size = buffer.size_fn(buffer_state)
+        large_batch = buffer.sample_fn(buffer_state, jax.random.PRNGKey(1337), batch_size)
+        return size, large_batch
+
+    buffer_state = buffer.init_fn(make_item(0))
+    err, (size, large_batch) = do_something_with_buffer(buffer_state)
+    err.throw()
+    assert size == 3
+    assert large_batch.shape == (batch_size,)
+
+
 def test_update():
     buffer = make_buffer()
     buffer_state = buffer.init_fn(make_item(0))

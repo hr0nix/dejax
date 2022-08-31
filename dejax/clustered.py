@@ -32,7 +32,7 @@ def clustered_replay(
         return ClusteredReplayBufferState(
             cluster_buffer=cluster_buffer,
             cluster_state_batch=cluster_state_batch,
-            clustering_fn=clustering_fn,
+            clustering_fn=jax.tree_util.Partial(clustering_fn),
             distribution_power=distribution_power,
         )
 
@@ -80,10 +80,10 @@ def clustered_replay(
         return state.replace(cluster_state_batch=updated_cluster_state_batch)
 
     return ReplayBuffer(
-        init_fn=init_fn,
-        size_fn=size_fn,
-        add_fn=add_fn,
-        add_batch_fn=make_default_add_batch_fn(add_fn),
-        sample_fn=sample_fn,
-        update_fn=update_fn
+        init_fn=jax.tree_util.Partial(init_fn),
+        size_fn=jax.tree_util.Partial(size_fn),
+        add_fn=jax.tree_util.Partial(add_fn),
+        add_batch_fn=jax.tree_util.Partial(make_default_add_batch_fn(add_fn)),
+        sample_fn=jax.tree_util.Partial(sample_fn),
+        update_fn=jax.tree_util.Partial(update_fn),
     )

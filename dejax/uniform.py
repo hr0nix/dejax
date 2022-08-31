@@ -41,11 +41,11 @@ def uniform_replay(max_size: int) -> ReplayBuffer:
         return state.replace(storage=state.storage.replace(data=updated_data))
 
     return ReplayBuffer(
-        init_fn=init_fn,
-        size_fn=size_fn,
-        add_fn=add_fn,
+        init_fn=jax.tree_util.Partial(init_fn),
+        size_fn=jax.tree_util.Partial(size_fn),
+        add_fn=jax.tree_util.Partial(add_fn),
         # TODO: it should be possible to make an optimized version of add_batch_fn for this buffer type
-        add_batch_fn=make_default_add_batch_fn(add_fn),
-        sample_fn=sample_fn,
-        update_fn=update_fn
+        add_batch_fn=jax.tree_util.Partial(make_default_add_batch_fn(add_fn)),
+        sample_fn=jax.tree_util.Partial(sample_fn),
+        update_fn=jax.tree_util.Partial(update_fn),
     )
