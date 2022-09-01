@@ -42,3 +42,12 @@ def item_update_fn(item):
     return item
 buffer_state = buffer.update_fn(buffer_state, item_update_fn)
 ```
+
+### An important note regarding in-place buffer updates
+JAX currently does not allow to update arguments of jit-compiled functions in-place even if the arguments are donated. It means that the following code
+```python
+train_state, replay_buffer_state = jax.jit(train_step, donate_argnums=(1,))(
+    train_state, replay_buffer_state, trajectory_batch
+)
+```
+will produce a copy of the replay buffer state if something has been added to the buffer inside `train_step`. This may cause the performance benefits of having access to a replay buffer in jit-compiled code to vanish. A relevant discussion of this issue can be found [here](https://github.com/google/jax/issues/9132#issuecomment-1234332780). Hopefully it will be fixed in future versions of JAX.
