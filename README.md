@@ -27,7 +27,7 @@ buffer_state = buffer.init_fn(item_prototype)
 Now we can fill the buffer:
 ```python
 for item in items:
-    buffer_state = buffer.add_fn(buffer_state, make_item(item))
+    buffer_state = buffer.add_fn(buffer_state, item)
 ```
 
 And sample from it:
