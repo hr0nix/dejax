@@ -1,4 +1,4 @@
-from typing import Tuple, Callable
+from typing import Callable, List
 
 import chex
 import jax.numpy as jnp
@@ -15,7 +15,9 @@ import dejax.utils as utils
 @chex.dataclass(frozen=True)
 class ClusteredReplayBufferState:
     cluster_buffer: ReplayBuffer
-    cluster_state_batch: ReplayBufferState
+    # If we store cluster states as a single batched tensor, it won't be possible
+    # to perform in-place updates, see https://github.com/google/jax/discussions/12209
+    cluster_states: List[ReplayBufferState]
     clustering_fn: Callable[[Item], IntScalar]
     distribution_power: float
 
@@ -27,34 +29,40 @@ def clustered_replay(
     distribution_power: float = 0.0,
 ) -> ReplayBuffer:
     def init_fn(item_prototype: Item) -> ClusteredReplayBufferState:
-        cluster_states = [cluster_buffer.init_fn(item_prototype) for _ in range(num_clusters)]
-        cluster_state_batch = utils.stack_trees(*cluster_states)
         return ClusteredReplayBufferState(
             cluster_buffer=cluster_buffer,
-            cluster_state_batch=cluster_state_batch,
+            cluster_states=[cluster_buffer.init_fn(item_prototype) for _ in range(num_clusters)],
             clustering_fn=jax.tree_util.Partial(clustering_fn),
             distribution_power=distribution_power,
         )
 
     def size_fn(state: ClusteredReplayBufferState) -> IntScalar:
-        return jnp.sum(jax.vmap(cluster_buffer.size_fn)(state.cluster_state_batch))
+        return sum(cluster_buffer.size_fn(cluster_state) for cluster_state in state.cluster_states)
 
     def add_fn(state: ClusteredReplayBufferState, item: Item) -> ClusteredReplayBufferState:
-        cluster_state_batch = state.cluster_state_batch
+        def make_cluster_add_fn(cluster_index):
+            def func():
+                result = utils.copy_tree(state.cluster_states)
+                result[cluster_index] = cluster_buffer.add_fn(result[cluster_index], item)
+                return result
+            return func
+
         cluster_index = state.clustering_fn(item)
-        item_cluster = utils.get_pytree_batch_item(cluster_state_batch, cluster_index)
-        item_cluster = state.cluster_buffer.add_fn(item_cluster, item)
-        cluster_state_batch = utils.set_pytree_batch_item(cluster_state_batch, cluster_index, item_cluster)
-        return state.replace(cluster_state_batch=cluster_state_batch)
+        new_cluster_states = jax.lax.switch(
+            cluster_index,
+            [make_cluster_add_fn(i) for i in range(len(state.cluster_states))],
+        )
+
+        return state.replace(cluster_states=new_cluster_states)
 
     def sample_fn(state: ClusteredReplayBufferState, rng: chex.PRNGKey, batch_size: int) -> ItemBatch:
-        cluster_sizes = jax.vmap(state.cluster_buffer.size_fn)(state.cluster_state_batch)
+        cluster_sizes = jnp.array([cluster_buffer.size_fn(cluster_state) for cluster_state in state.cluster_states])
         cluster_weights = jnp.where(
             cluster_sizes > 0, jnp.power(cluster_sizes, state.distribution_power), cluster_sizes)
 
         cluster_fractions = cluster_weights / jnp.sum(cluster_weights)
         num_samples = jnp.round(batch_size * cluster_fractions).astype(jnp.int32)
-        checkify.check(jnp.sum(num_samples) == batch_size, 'Number of samples does not match batch size')
+        #checkify.check(jnp.sum(num_samples) == batch_size, 'Number of samples does not match batch size')
 
         rng, cluster_selection_key = jax.random.split(rng)
         cluster_for_sample = jax.random.categorical(
@@ -64,8 +72,15 @@ def clustered_replay(
         def sample_item(cluster_index: IntScalar, rng: chex.PRNGKey) -> Item:
             chex.assert_shape(cluster_index, ())
 
-            cluster_state = utils.get_pytree_batch_item(state.cluster_state_batch, cluster_index)
-            sample = state.cluster_buffer.sample_fn(cluster_state, rng, 1)
+            def make_cluster_sample_fn(cluster_index):
+                def func():
+                    return state.cluster_buffer.sample_fn(state.cluster_states[cluster_index], rng, 1)
+                return func
+
+            sample = jax.lax.switch(
+                cluster_index,
+                [make_cluster_sample_fn(i) for i in range(len(state.cluster_states))],
+            )
 
             chex.assert_tree_shape_prefix(sample, (1,))
             return utils.get_pytree_batch_item(sample, 0)
@@ -73,11 +88,11 @@ def clustered_replay(
         return jax.vmap(sample_item)(cluster_for_sample, rng_batch)
 
     def update_fn(state: ClusteredReplayBufferState, item_update_fn: ItemUpdateFn) -> ClusteredReplayBufferState:
-        def cluster_update_fn(cluster_state: ReplayBufferState) -> ReplayBufferState:
-            return state.cluster_buffer.update_fn(cluster_state, item_update_fn)
-        batch_cluster_update_fn = jax.vmap(cluster_update_fn)
-        updated_cluster_state_batch = batch_cluster_update_fn(state.cluster_state_batch)
-        return state.replace(cluster_state_batch=updated_cluster_state_batch)
+        new_cluster_states = [
+            cluster_buffer.update_fn(cluster_state, item_update_fn)
+            for cluster_state in state.cluster_states
+        ]
+        return state.replace(cluster_states=new_cluster_states)
 
     return ReplayBuffer(
         init_fn=jax.tree_util.Partial(init_fn),

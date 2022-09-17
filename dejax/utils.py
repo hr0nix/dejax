@@ -62,3 +62,7 @@ def concatenate_trees(*trees, axis=0):
 
 def stack_trees(*trees, axis=0):
     return jax.tree_util.tree_map(lambda *t: jnp.stack(t, axis=axis), *trees)
+
+
+def copy_tree(tree):
+    return jax.tree_util.tree_map(lambda t: t, tree)
